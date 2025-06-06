@@ -4,7 +4,9 @@ message(STATUS "start zmq add sub directory")
 
 set(ZeroMqInclude ${CMAKE_CURRENT_LIST_DIR}/include)
 
-set_property(TARGET ZmqIpc PROPERTY INCLUDE_DIRECTORIES ${ZeroMqInclude})
+set_property(TARGET ZmqIpcServer PROPERTY INCLUDE_DIRECTORIES ${ZeroMqInclude})
+
+set_property(TARGET ZmqIpcClient PROPERTY INCLUDE_DIRECTORIES ${ZeroMqInclude})
 
 set(ZeroMqLib ${CMAKE_CURRENT_LIST_DIR}/lib/libzmq.a)
 
@@ -20,14 +22,19 @@ set(public_header
 # )
 
 target_include_directories(
-    ZmqIpc PUBLIC ${ZeroMqInclude}
+    ZmqIpcServer PUBLIC ${ZeroMqInclude}
 )
 
-target_link_libraries(ZmqIpc PUBLIC
+target_include_directories(
+    ZmqIpcClient PUBLIC ${ZeroMqInclude}
+)
+
+target_link_libraries(ZmqIpcServer PUBLIC
     ${ZeroMqLib}
-
 )
 
-message(STATUS "zmq ipc .a found ${ZmqIpc_FOUND}")
+target_link_libraries(ZmqIpcClient PUBLIC
+    ${ZeroMqLib}
+)
 
 message(STATUS "end zmq add sub directory")

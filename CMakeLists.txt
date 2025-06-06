@@ -13,7 +13,9 @@ set(ZMQROOT ${CMAKE_CURRENT_LIST_DIR}/zmq)
 
 set(IPCROOT ${CMAKE_CURRENT_LIST_DIR}/ipc)
 
-add_executable(ZmqIpc)
+add_executable(ZmqIpcServer)
+
+add_executable(ZmqIpcClient)
 
 message(STATUS "add zmq root sub directory")
 
