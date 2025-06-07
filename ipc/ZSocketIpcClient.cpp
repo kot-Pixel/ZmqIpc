@@ -14,13 +14,14 @@ void connectServer() {
     } else {
         printf("zmq_connect success\n");
 
-        const char* method = "ping";
+        ipc::Request req;
+        req.set_id(1);
+        req.set_command("ping");
 
-        char uuid[UUID_BUFFER_LEN];
-        generate_uuid(method, uuid, sizeof(uuid));
-        printf("Generated UUID: %s\n", uuid);
+        std::string serialized;
+        req.SerializeToString(&serialized);
 
-        rc = zmq_send(zSocketClient, uuid, strlen(uuid), 0);
+        rc = zmq_send(zSocketClient, serialized.data(), serialized.size(), 0);
         if (rc > 0) {
             printf("zmq_send send success\n");
         } else {
@@ -50,7 +51,6 @@ int main() {
     initClientSocketIpcEnv();
 
     connectServer();
-
 
     while (1) {
         sleep(100);

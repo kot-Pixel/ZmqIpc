@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include "message.pb.h"
 
 #define UUID_BUFFER_LEN 128
 
