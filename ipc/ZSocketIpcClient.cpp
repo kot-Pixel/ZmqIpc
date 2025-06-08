@@ -8,6 +8,7 @@ void initClientSocketIpcEnv() {
 }
 
 void connectServer() {
+    zmq_setsockopt(zSocketClient, ZMQ_IDENTITY, "wwwddd1", 6);
     int rc =  zmq_connect(zSocketClient, "ipc:///data/local/tmp/zmq_server.sock");
     if (rc != 0) {
         perror("zmq_connect failed");
@@ -21,12 +22,33 @@ void connectServer() {
         std::string serialized;
         req.SerializeToString(&serialized);
 
+        rc = zmq_send(zSocketClient, "", 0, ZMQ_SNDMORE);
+
         rc = zmq_send(zSocketClient, serialized.data(), serialized.size(), 0);
         if (rc > 0) {
             printf("zmq_send send success\n");
         } else {
             printf("zmq_send send failure\n");
         }
+
+        zmq_msg_t msg;
+
+        zmq_msg_init(&msg);
+        rc = zmq_msg_recv(&msg, zSocketClient, 0);
+        if (rc >= 0) {
+            printf("Received empty frame: size=%d\n", rc);
+        }
+        zmq_msg_close(&msg);
+
+        zmq_msg_init(&msg);
+        rc = zmq_msg_recv(&msg, zSocketClient, 0);
+        if (rc >= 0) {
+            std::string replyStr((char*)zmq_msg_data(&msg), zmq_msg_size(&msg));
+            printf("Received reply: %s\n", replyStr.c_str());
+        } else {
+            printf("Failed to receive reply, errno: %d\n", errno);
+        }
+        zmq_msg_close(&msg);
     }
 }
 

@@ -1,81 +1,79 @@
 #include "ZSocketIpcServer.hpp"
 
 
-void initZSocketIpcEnv(ZSocketIpcEnv* env) {
-    memset(env, 0, sizeof(ZSocketIpcEnv));
+void initSocketIpcServer(ZSocketIpcEnv* env) {
 
-    env->zSocketIpcCxt = zmq_ctx_new();
-    env->mSocketCount = 0; 
-}
-
-
-void* initSocketIpcServer(ZSocketIpcEnv* env, int socketType, const char* socketPath) {
-
-    void* socket = zmq_socket(env->zSocketIpcCxt, socketType);
-
-    if (!socket) {
-        perror("zmq_socket");
-        return nullptr;
-    }
-
-    if (zmq_bind(socket, socketPath) != 0) {
-        perror("zmq_bind");
-        zmq_close(socket);
-        return nullptr;
-    }
-
-    env->mSocketCount++;
-    return socket;
-}
-
-void* serverReceiveThreadFunc(void* arg) {
-    ZSocketIpcServerParam *parm = (ZSocketIpcServerParam*)arg;
     int rc = 0;
-    while (true) {
-        zmq_msg_t identity, msg;
 
-        zmq_msg_init(&identity);
-        rc = zmq_msg_recv(&identity, parm->zmqSocket, 0);
+    memset(env, 0, sizeof(ZSocketIpcEnv));
+    env->zSocketIpcCxt = zmq_ctx_new();
 
-        zmq_msg_init(&msg);
-        rc = zmq_msg_recv(&msg, parm->zmqSocket, 0);
+    if (env->zSocketIpcCxt == nullptr) {
+        perror("server zmq ctx create error");
+        return;
+    }
 
-        printf("zmq_msg_recv result is %d", rc);
+    //create server socket process client.
+    env->mServerSocket = zmq_socket(env->zSocketIpcCxt, ZMQ_ROUTER);
 
-        size_t size = zmq_msg_size(&msg);
-        void* src = zmq_msg_data(&msg);
+    //create server proxy socket.
+    env->mServerProxySocket = zmq_socket(env->zSocketIpcCxt, ZMQ_DEALER);
 
-        void* buffer = malloc(size);
-        if (!buffer) {
-            fprintf(stderr, "malloc failed\n");
-            zmq_msg_close(&msg);
-            continue;
-        }
+    if (!env->mServerSocket) {
+        perror("server zmq socket create error");
+    }
 
-        memcpy(buffer, src, size);
+    if (zmq_bind(env->mServerSocket, Z_SOCKET_SERVER_PATH) != 0) {
+        perror("server zmq bind error");
+        zmq_close(env->mServerSocket);
+    }
 
-        zmq_msg_close(&msg);
+    if(!env->mServerProxySocket) {
+        perror("server proxy zmq socket create error");
+    }
 
-        if(parm->cb) {
-            (* parm->cb)(buffer, size, free);
+    if (zmq_bind(env->mServerProxySocket, Z_SOCKET_SERVER_PROXY) != 0) {
+        perror("server proxy zmq bind error");
+        zmq_close(env->mServerProxySocket);
+    }
+
+    printf("server socket and proxy socket create complete\n");
+
+    for (int i = 0; i < WORKER_COUNT; ++i) {
+        env->mServerProxyWorks[i].zSocketIpcCxt = env->zSocketIpcCxt;
+        env->mServerProxyWorks[i].msgCallBack = nullptr;
+        env->mServerProxyWorks[i].index = i;
+    
+        if (rc == 0) {
+            pthread_create(&env->mServerProxyWorks[i].thread, NULL, socketWorkerReceiveThread, &env->mServerProxyWorks[i]);
+            pthread_detach(env->mServerProxyWorks[i].thread);
         }
     }
-    return NULL;
+
+    zmq_proxy(env->mServerSocket, env->mServerProxySocket, NULL);
+
+    printf("server terminal, will close socket\n");
+
+    zmq_close(env->mServerSocket);
+    zmq_close(env->mServerProxySocket);
+    zmq_ctx_term(env->zSocketIpcCxt);
 }
+
+
 
 /**
  * 注册SocketServer的回调。
  */
-void regsitReceiveCallBackSocketServer(ZSocketIpcServerParam* p) {
-    printf("- - - - start regsit receive call back socket server - - - -\n");
+// void regsitReceiveCallBackSocketServer(ZSocketIpcServerParam* p) {
+//     printf("- - - - start regsit receive call back socket server - - - -\n");
 
-    pthread_t thread;
+//     pthread_t thread;
 
-    pthread_create(&thread, NULL, serverReceiveThreadFunc, (void*)p);
-    pthread_detach(thread);
+//     pthread_create(&thread, NULL, serverReceiveThreadFunc, (void*)p);
+//     pthread_detach(thread);
 
-    printf("- - - - end regsit receive call back socket server - - - \n");
-}
+//     printf("- - - - end regsit receive call back socket server - - - \n");
+// }
 
 
 /**
@@ -93,28 +91,28 @@ void on_message(void* data, size_t size, void (*release_fn)(void*)) {
 
 
 int main() {
-    initZSocketIpcEnv(&g_zsocket_env);
+    // initZSocketIpcEnv(&g_zsocket_env);
 
-    printf("initZSocketIpcEnv invoke complete, socket env pointer address is: %p\n", g_zsocket_env.zSocketIpcCxt);
+    // printf("initZSocketIpcEnv invoke complete, socket env pointer address is: %p\n", g_zsocket_env.zSocketIpcCxt);
 
-    void* repSocket = initSocketIpcServer(&g_zsocket_env, ZMQ_ROUTER, "ipc:///data/local/tmp/zmq_server.sock");
+    initSocketIpcServer(&g_zsocket_env);
 
-    if (repSocket != nullptr) {
-        printf("create socket server success\n");
-    } else {
-        printf("create socket server failure\n");
-    }
+    // if (repSocket != nullptr) {
+    //     printf("create socket server success\n");
+    // } else {
+    //     printf("create socket server failure\n");
+    // }
 
-    ZSocketIpcServerParam parm = {
-        .zmqSocket = repSocket,
-        .cb = on_message
-    };
+    // ZSocketIpcServerParam parm = {
+    //     .zmqSocket = repSocket,
+    //     .cb = on_message
+    // };
 
-    regsitReceiveCallBackSocketServer(&parm);
+    // regsitReceiveCallBackSocketServer(&parm);
 
 
-    while (1) {
-        sleep(100);
-    }
+    // while (1) {
+    //     sleep(100);
+    // }
     return 0;
 }

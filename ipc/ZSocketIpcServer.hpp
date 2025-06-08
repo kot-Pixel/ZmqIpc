@@ -4,28 +4,34 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include "ZSocketIpcWorker.hpp"
+#include "ZSocketIpcUtils.hpp"
+#include "ZSocketIpcDefine.hpp"
+#define WORKER_COUNT 8
 
 typedef struct {
     void* zSocketIpcCxt;
+    void* mServerSocket;
+    void* mServerProxySocket;
 
-    int mSocketCount;
+    IpcBinderWorker mServerProxyWorks[WORKER_COUNT];
 } ZSocketIpcEnv;
 
 
-typedef void (*ZmqMessageCallback)(void* data, size_t size, void (*release_fn)(void*));
+// typedef void (*ZmqMessageCallback)(void* data, size_t size, void (*release_fn)(void*));
 
-typedef struct {
-    void* zmqSocket;
-    ZmqMessageCallback cb;
-} ZSocketIpcServerParam;
+// typedef struct {
+//     void* zmqSocket;
+//     ZmqMessageCallback cb;
+// } ZSocketIpcServerParam;
 
 static ZSocketIpcEnv g_zsocket_env;
 
 //int all server socket zmq ctx
-void initZSocketIpcEnv(ZSocketIpcEnv *);
+// void initZSocketIpcEnv(ZSocketIpcEnv *);
 
 //init a zmq socket ipc server, return zmq socket pointer
-void* initSocketIpcServer(ZSocketIpcEnv *, int, const char*);
+void initSocketIpcServer(ZSocketIpcEnv *);
 
 //regist receive call back form server
-void regsitReceiveCallBackSocketServer(ZSocketIpcServerParam *);
+// void regsitReceiveCallBackSocketServer(ZSocketIpcServerParam *);

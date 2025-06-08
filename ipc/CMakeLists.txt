@@ -10,9 +10,13 @@ message(STATUS "protobuf interface include dirs: ${PB_INCLUDE_DIRS}")
 
 #message(STATUS "zeroMq interface found ${ZeroMqInterface_FOUND}")
 
-set(public_header 
+set(public_header
+    ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcDefine.hpp
     ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcServer.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcWorker.hpp
+
     ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcClient.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcUtils.hpp
 
     ${CMAKE_CURRENT_LIST_DIR}/message.pb.h
 )
@@ -28,6 +32,11 @@ target_link_libraries(
 target_sources(
     ZmqIpcServer PUBLIC 
     ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcServer.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcWorker.cpp
+
+    ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcUtils.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcUtils.cpp
+
     ${CMAKE_CURRENT_LIST_DIR}/message.pb.cc
 )
 
