@@ -1,3 +1,5 @@
+#pragma once
+
 #include <zmq.h>
 #include <stdio.h>
 #include <string.h>
@@ -7,6 +9,9 @@
 #include "ZSocketIpcWorker.hpp"
 #include "ZSocketIpcUtils.hpp"
 #include "ZSocketIpcDefine.hpp"
+#include "ZSocketIpcDispatcher.hpp"
+#include "message.pb.h"
+
 #define WORKER_COUNT 8
 
 typedef struct {
@@ -15,23 +20,13 @@ typedef struct {
     void* mServerProxySocket;
 
     IpcBinderWorker mServerProxyWorks[WORKER_COUNT];
+
+    IpcDispatcher mIpcDispatcher;
 } ZSocketIpcEnv;
 
-
-// typedef void (*ZmqMessageCallback)(void* data, size_t size, void (*release_fn)(void*));
-
-// typedef struct {
-//     void* zmqSocket;
-//     ZmqMessageCallback cb;
-// } ZSocketIpcServerParam;
-
 static ZSocketIpcEnv g_zsocket_env;
-
-//int all server socket zmq ctx
-// void initZSocketIpcEnv(ZSocketIpcEnv *);
 
 //init a zmq socket ipc server, return zmq socket pointer
 void initSocketIpcServer(ZSocketIpcEnv *);
 
-//regist receive call back form server
-// void regsitReceiveCallBackSocketServer(ZSocketIpcServerParam *);
+void initSocketIpcDispather();

@@ -17,6 +17,10 @@ set(public_header
 
     ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcClient.hpp
     ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcUtils.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcDispatcher.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/ZSoctetIpcHandler.hpp
+
+    ${CMAKE_CURRENT_LIST_DIR}/ipc.pb.h
 
     ${CMAKE_CURRENT_LIST_DIR}/message.pb.h
 )
@@ -35,7 +39,9 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcWorker.cpp
 
     ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcUtils.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcUtils.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcDispatcher.cpp
+
+    ${CMAKE_CURRENT_LIST_DIR}/ipc.pb.cc
 
     ${CMAKE_CURRENT_LIST_DIR}/message.pb.cc
 )
@@ -45,6 +51,8 @@ target_sources(
     
     ${CMAKE_CURRENT_LIST_DIR}/ZSocketIpcClient.cpp
     ${CMAKE_CURRENT_LIST_DIR}/message.pb.cc
+
+    ${CMAKE_CURRENT_LIST_DIR}/ipc.pb.cc
 )
 
 message(STATUS "end ipc add sub directory")

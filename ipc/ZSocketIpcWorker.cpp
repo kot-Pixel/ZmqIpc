@@ -27,35 +27,41 @@ void* socketWorkerReceiveThread(void* arg) {
         zmq_msg_init(&content);
         rc = zmq_msg_recv(&content, worker->proxySocket, 0);
 
-        printf("Worker received: content %.*s\n", (int)zmq_msg_size(&content), (char*)zmq_msg_data(&content));
+        ipc::IpcRequest request;
+        if (!request.ParseFromArray(zmq_msg_data(&content), zmq_msg_size(&content))) {
+            fprintf(stderr, "Failed to parse IpcRequest\n");
+            continue;
+        }
 
+        char resp_buf[2048];
+        int resp_len = 0;
+
+        bool ok = ipc_dispatch(
+            request.method().c_str(),
+            request.payload().data(), request.payload().size(),
+            resp_buf, &resp_len, sizeof(resp_buf)
+        );
+
+        ipc::IpcResponse response;
+        response.set_request_id(request.request_id());
+
+        if (ok) {
+            response.set_payload(resp_buf, resp_len);
+        } else {
+            response.set_error("dispatcher error or method not found");
+        }
+
+        std::string response_data;
+        response.SerializeToString(&response_data);
+
+        zmq_msg_t reply_msg;
+        zmq_msg_init_size(&reply_msg, response_data.size());
+        memcpy(zmq_msg_data(&reply_msg), response_data.data(), response_data.size());
 
         zmq_msg_send(&identity, worker->proxySocket, ZMQ_SNDMORE);
         zmq_msg_send(&empty, worker->proxySocket, ZMQ_SNDMORE);
-
-        const char* reply = "World";
-        zmq_msg_t reply_msg;
-        zmq_msg_init_size(&reply_msg, strlen(reply));
-        memcpy(zmq_msg_data(&reply_msg), reply, strlen(reply));
         zmq_msg_send(&reply_msg, worker->proxySocket, 0);
-
-        // size_t size = zmq_msg_size(&msg);
-        // void* src = zmq_msg_data(&msg);
-
-        // void* buffer = malloc(size);
-        // if (!buffer) {
-        //     fprintf(stderr, "malloc failed\n");
-        //     zmq_msg_close(&msg);
-        //     continue;
-        // }
-
-        // memcpy(buffer, src, size);
-
-        // zmq_msg_close(&msg);
-
-        // if(parm->cb) {
-        //     (* parm->cb)(buffer, size, free);
-        // }
+        
         zmq_msg_close(&reply_msg);
         zmq_msg_close(&identity);
         zmq_msg_close(&empty);

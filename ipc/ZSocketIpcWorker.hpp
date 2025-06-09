@@ -6,8 +6,10 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <errno.h>
-#include "ZSocketIpcDefine.hpp"
 #include <pthread.h>
+#include "ZSocketIpcDefine.hpp"
+#include "ZSocketIpcDispatcher.hpp"
+#include "ipc.pb.h"
 
 #define QUEUE_SIZE 10
 

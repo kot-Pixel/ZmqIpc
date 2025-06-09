@@ -59,6 +59,23 @@ void initSocketIpcServer(ZSocketIpcEnv* env) {
     zmq_ctx_term(env->zSocketIpcCxt);
 }
 
+void initSocketIpcDispather() {
+    ipc_register("add", make_ipc_handler<ipc::Request, ipc::Response>([](const ipc::Request& req, ipc::Response& resp) {
+            printf("invoke add\n");
+            int id = req.id();
+
+            std::string command = req.command();
+
+            printf("request id is %d\n", id);
+
+            printf("request command is %ss\n", command.c_str());
+
+            resp.set_id(13213);
+            resp.set_success(true);
+            resp.set_message("okkkkkkkk");
+        })
+    );
+}
 
 
 /**
@@ -91,28 +108,7 @@ void on_message(void* data, size_t size, void (*release_fn)(void*)) {
 
 
 int main() {
-    // initZSocketIpcEnv(&g_zsocket_env);
-
-    // printf("initZSocketIpcEnv invoke complete, socket env pointer address is: %p\n", g_zsocket_env.zSocketIpcCxt);
-
+    initSocketIpcDispather();
     initSocketIpcServer(&g_zsocket_env);
-
-    // if (repSocket != nullptr) {
-    //     printf("create socket server success\n");
-    // } else {
-    //     printf("create socket server failure\n");
-    // }
-
-    // ZSocketIpcServerParam parm = {
-    //     .zmqSocket = repSocket,
-    //     .cb = on_message
-    // };
-
-    // regsitReceiveCallBackSocketServer(&parm);
-
-
-    // while (1) {
-    //     sleep(100);
-    // }
     return 0;
 }

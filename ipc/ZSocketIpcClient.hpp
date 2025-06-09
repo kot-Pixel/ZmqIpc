@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include "message.pb.h"
+#include "ipc.pb.h"
 
 #define UUID_BUFFER_LEN 128
 

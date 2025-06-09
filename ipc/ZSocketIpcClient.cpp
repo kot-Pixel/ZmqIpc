@@ -19,17 +19,20 @@ void connectServer() {
         req.set_id(1);
         req.set_command("ping");
 
-        std::string serialized;
-        req.SerializeToString(&serialized);
+        std::string req_payload;
+        req.SerializeToString(&req_payload);
 
-        rc = zmq_send(zSocketClient, "", 0, ZMQ_SNDMORE);
+        ipc::IpcRequest ipc_req;
+        ipc_req.set_method("add");
+        ipc_req.set_payload(req_payload);
+        ipc_req.set_request_id(1001);
 
-        rc = zmq_send(zSocketClient, serialized.data(), serialized.size(), 0);
-        if (rc > 0) {
-            printf("zmq_send send success\n");
-        } else {
-            printf("zmq_send send failure\n");
-        }
+        std::string ipc_payload;
+        ipc_req.SerializeToString(&ipc_payload);
+
+        zmq_send(zSocketClient, "", 0, ZMQ_SNDMORE);
+        zmq_send(zSocketClient, ipc_payload.data(), ipc_payload.size(), 0);
+        printf("Request sent.\n");
 
         zmq_msg_t msg;
 
