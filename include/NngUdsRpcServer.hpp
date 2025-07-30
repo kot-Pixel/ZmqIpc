@@ -15,115 +15,73 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, PROJECT_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, PROJECT_TAG, __VA_ARGS__)
 
-// 包装结构体：绑定 AIO 与 this 指针
-struct AioWithContext {
-    nng_aio* aio = nullptr;
-    class NngUdsRpcServer* server = nullptr;
+struct AioWithContext
+{
+    nng_aio *aio = nullptr;
+    class NngUdsRpcServer *server = nullptr;
 };
 
-class NngUdsRpcServer {
+class NngUdsRpcServer
+{
 public:
-    explicit NngUdsRpcServer(const std::string& addr = "abstract://nng.rpc", int workers = 16)
-            : address(addr), num_workers(workers), sock{} {}
 
-    ~NngUdsRpcServer() {
+    using HandlerFunc = std::function<void(const void* req_buf, size_t len, std::string& response_out)>;
+
+    NngUdsRpcServer(const std::string &addr = "abstract://nng.rpc", int workers = 16)
+        : address(addr), num_workers(workers), sock{} {}
+
+    ~NngUdsRpcServer()
+    {
         stop();
     }
 
-    bool start() {
-        int rv;
+    bool start();
 
-        if ((rv = nng_pull_open(&sock)) != 0) {
-            LOGE("nng_pull_open: %s", nng_strerror(rv));
-            return false;
-        }
+    void run_forever();
 
-        if ((rv = nng_listen(sock, address.c_str(), nullptr, 0)) != 0) {
-            LOGE("nng_listen: %s", nng_strerror(rv));
-            nng_close(sock);
-            return false;
-        }
+    void stop();
 
-        for (int i = 0; i < num_workers; ++i) {
-            auto* ctx = new AioWithContext();
-            ctx->server = this;
-
-            rv = nng_aio_alloc(&ctx->aio, recv_cb_static, ctx);
-            if (rv != 0) {
-                LOGE("nng_aio_alloc: %s", nng_strerror(rv));
-                delete ctx;
-                return false;
+    template <typename RequestT, typename ResponseT>
+    void register_method(const std::string& method_name,
+                         std::function<flatbuffers::Offset<ResponseT>(const RequestT*, flatbuffers::FlatBufferBuilder&)> handler)
+    {
+        HandlerFunc wrapper = [handler](const void* req_buf, size_t len, std::string& resp_out) {
+            const uint8_t* data = reinterpret_cast<const uint8_t*>(req_buf);
+            flatbuffers::Verifier verifier(data, len);
+            if (!verifier.VerifyBuffer<RequestT>()) {
+                LOGE("flatbuffer verify failed");
+                return;
             }
 
-            aio_list.push_back(ctx);
-            nng_recv_aio(sock, ctx->aio);
-        }
+            const RequestT* req_obj = flatbuffers::GetRoot<RequestT>(data);
+            flatbuffers::FlatBufferBuilder fbb;
 
-        LOGD("NNG RPC server started at: %s", address.c_str());
-        return true;
+            auto resp_offset = handler(req_obj, fbb);
+            fbb.Finish(resp_offset);
+
+            resp_out.assign(reinterpret_cast<const char*>(fbb.GetBufferPointer()), fbb.GetSize());
+        };
     }
 
-    void run_forever() {
-        while (true) {
-            nng_msleep(1000);
-        }
-    }
-
-    void stop() {
-        for (auto* ctx : aio_list) {
-            if (ctx && ctx->aio) {
-                nng_aio_stop(ctx->aio);
-                nng_aio_free(ctx->aio);
-            }
-            delete ctx;
-        }
-        aio_list.clear();
-        nng_close(sock);
-        LOGD("NNG RPC server stopped.");
-    }
+    void dispatch(const std::string& method_name, const void* req_buf, size_t len, std::string& resp_out);
 
 private:
-    static void recv_cb_static(void* arg) {
-        auto* ctx = static_cast<AioWithContext*>(arg);
-        if (ctx && ctx->server) {
+    static void recv_cb_static(void *arg)
+    {
+        auto *ctx = static_cast<AioWithContext *>(arg);
+        if (ctx && ctx->server)
+        {
             ctx->server->recv_cb(ctx->aio);
         }
     }
 
-    void recv_cb(nng_aio* aio) {
-        int rv = nng_aio_result(aio);
-        if (rv == 0) {
-            nng_msg* msg = nng_aio_get_msg(aio);
-            void* data = nng_msg_body(msg);
-            size_t len = nng_msg_len(msg);
-
-            flatbuffers::Verifier verifier(reinterpret_cast<const uint8_t*>(data), len);
-            if (!rpc::VerifyRequestBuffer(verifier)) {
-                LOGE("Invalid FlatBuffer message received.");
-                nng_msg_free(msg);
-                nng_recv_aio(sock, aio);
-                return;
-            }
-
-            const rpc::Request* req = rpc::GetRequest(data);
-            LOGD("Received RPC id=%llu, method=%s, payload_size=%zu",
-                 static_cast<unsigned long long>(req->id()),
-                 req->method() ? req->method()->c_str() : "null",
-                 req->payload() ? req->payload()->size() : 0);
-
-            // 处理请求后释放消息
-            nng_msg_free(msg);
-        } else {
-            LOGE("Error receiving message: %s", nng_strerror(rv));
-        }
-
-        // 继续等待下一条消息
-        nng_recv_aio(sock, aio);
-    }
+    void recv_cb(nng_aio *aio);
 
 private:
     std::string address;
     int num_workers;
     nng_socket sock;
-    std::vector<AioWithContext*> aio_list;
+    std::vector<AioWithContext *> aio_list;
+
+    std::unordered_map<std::string, HandlerFunc> method_map;
 };

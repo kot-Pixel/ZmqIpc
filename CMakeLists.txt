@@ -39,7 +39,6 @@ install(TARGETS ZmqIpcServer
     ARCHIVE DESTINATION lib
 )
 
-# 安装头文件（比如当前项目的 include 目录）
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
         DESTINATION include
         FILES_MATCHING
