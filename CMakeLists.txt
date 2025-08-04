@@ -29,8 +29,8 @@ target_link_libraries(ZmqIpcServer PRIVATE log)
 
 target_sources(ZmqIpcServer PUBLIC 
     # src/ZUdsRpcServer.cpp
-    src/NngUdsRpcServer.cpp
-    src/NngUdsRpcClient.cpp
+    src/NngUdsRpcPeerListener.cpp
+    src/NngUdsRpcPeerDial.cpp
 )
 
 # target_link_libraries(ZmqIpcServer)

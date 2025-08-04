@@ -15,21 +15,52 @@ static_assert(FLATBUFFERS_VERSION_MAJOR == 25 &&
 
 namespace rpc {
 
-struct Request;
-struct RequestBuilder;
+struct RpcMessage;
+struct RpcMessageBuilder;
 
-struct Response;
-struct ResponseBuilder;
+enum RpcMessageType : int8_t {
+  RpcMessageType_REQUEST = 0,
+  RpcMessageType_RESPONSE = 1,
+  RpcMessageType_MIN = RpcMessageType_REQUEST,
+  RpcMessageType_MAX = RpcMessageType_RESPONSE
+};
 
-struct Request FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
-  typedef RequestBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_ID = 4,
-    VT_METHOD = 6,
-    VT_PAYLOAD = 8
+inline const RpcMessageType (&EnumValuesRpcMessageType())[2] {
+  static const RpcMessageType values[] = {
+    RpcMessageType_REQUEST,
+    RpcMessageType_RESPONSE
   };
-  uint64_t id() const {
-    return GetField<uint64_t>(VT_ID, 0);
+  return values;
+}
+
+inline const char * const *EnumNamesRpcMessageType() {
+  static const char * const names[3] = {
+    "REQUEST",
+    "RESPONSE",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameRpcMessageType(RpcMessageType e) {
+  if (::flatbuffers::IsOutRange(e, RpcMessageType_REQUEST, RpcMessageType_RESPONSE)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesRpcMessageType()[index];
+}
+
+struct RpcMessage FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef RpcMessageBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_TYPE = 4,
+    VT_ID = 6,
+    VT_METHOD = 8,
+    VT_PAYLOAD = 10
+  };
+  rpc::RpcMessageType type() const {
+    return static_cast<rpc::RpcMessageType>(GetField<int8_t>(VT_TYPE, 0));
+  }
+  uint32_t id() const {
+    return GetField<uint32_t>(VT_ID, 0);
   }
   const ::flatbuffers::String *method() const {
     return GetPointer<const ::flatbuffers::String *>(VT_METHOD);
@@ -39,7 +70,8 @@ struct Request FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint64_t>(verifier, VT_ID, 8) &&
+           VerifyField<int8_t>(verifier, VT_TYPE, 1) &&
+           VerifyField<uint32_t>(verifier, VT_ID, 4) &&
            VerifyOffset(verifier, VT_METHOD) &&
            verifier.VerifyString(method()) &&
            VerifyOffset(verifier, VT_PAYLOAD) &&
@@ -48,159 +80,61 @@ struct Request FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   }
 };
 
-struct RequestBuilder {
-  typedef Request Table;
+struct RpcMessageBuilder {
+  typedef RpcMessage Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
   ::flatbuffers::uoffset_t start_;
-  void add_id(uint64_t id) {
-    fbb_.AddElement<uint64_t>(Request::VT_ID, id, 0);
+  void add_type(rpc::RpcMessageType type) {
+    fbb_.AddElement<int8_t>(RpcMessage::VT_TYPE, static_cast<int8_t>(type), 0);
+  }
+  void add_id(uint32_t id) {
+    fbb_.AddElement<uint32_t>(RpcMessage::VT_ID, id, 0);
   }
   void add_method(::flatbuffers::Offset<::flatbuffers::String> method) {
-    fbb_.AddOffset(Request::VT_METHOD, method);
+    fbb_.AddOffset(RpcMessage::VT_METHOD, method);
   }
   void add_payload(::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> payload) {
-    fbb_.AddOffset(Request::VT_PAYLOAD, payload);
+    fbb_.AddOffset(RpcMessage::VT_PAYLOAD, payload);
   }
-  explicit RequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+  explicit RpcMessageBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  ::flatbuffers::Offset<Request> Finish() {
+  ::flatbuffers::Offset<RpcMessage> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = ::flatbuffers::Offset<Request>(end);
+    auto o = ::flatbuffers::Offset<RpcMessage>(end);
     return o;
   }
 };
 
-inline ::flatbuffers::Offset<Request> CreateRequest(
+inline ::flatbuffers::Offset<RpcMessage> CreateRpcMessage(
     ::flatbuffers::FlatBufferBuilder &_fbb,
-    uint64_t id = 0,
+    rpc::RpcMessageType type = rpc::RpcMessageType_REQUEST,
+    uint32_t id = 0,
     ::flatbuffers::Offset<::flatbuffers::String> method = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> payload = 0) {
-  RequestBuilder builder_(_fbb);
-  builder_.add_id(id);
+  RpcMessageBuilder builder_(_fbb);
   builder_.add_payload(payload);
   builder_.add_method(method);
+  builder_.add_id(id);
+  builder_.add_type(type);
   return builder_.Finish();
 }
 
-inline ::flatbuffers::Offset<Request> CreateRequestDirect(
+inline ::flatbuffers::Offset<RpcMessage> CreateRpcMessageDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
-    uint64_t id = 0,
+    rpc::RpcMessageType type = rpc::RpcMessageType_REQUEST,
+    uint32_t id = 0,
     const char *method = nullptr,
     const std::vector<uint8_t> *payload = nullptr) {
   auto method__ = method ? _fbb.CreateString(method) : 0;
   auto payload__ = payload ? _fbb.CreateVector<uint8_t>(*payload) : 0;
-  return rpc::CreateRequest(
+  return rpc::CreateRpcMessage(
       _fbb,
+      type,
       id,
       method__,
       payload__);
-}
-
-struct Response FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
-  typedef ResponseBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_ID = 4,
-    VT_CODE = 6,
-    VT_RESULT = 8
-  };
-  uint64_t id() const {
-    return GetField<uint64_t>(VT_ID, 0);
-  }
-  int32_t code() const {
-    return GetField<int32_t>(VT_CODE, 0);
-  }
-  const ::flatbuffers::Vector<uint8_t> *result() const {
-    return GetPointer<const ::flatbuffers::Vector<uint8_t> *>(VT_RESULT);
-  }
-  bool Verify(::flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyField<uint64_t>(verifier, VT_ID, 8) &&
-           VerifyField<int32_t>(verifier, VT_CODE, 4) &&
-           VerifyOffset(verifier, VT_RESULT) &&
-           verifier.VerifyVector(result()) &&
-           verifier.EndTable();
-  }
-};
-
-struct ResponseBuilder {
-  typedef Response Table;
-  ::flatbuffers::FlatBufferBuilder &fbb_;
-  ::flatbuffers::uoffset_t start_;
-  void add_id(uint64_t id) {
-    fbb_.AddElement<uint64_t>(Response::VT_ID, id, 0);
-  }
-  void add_code(int32_t code) {
-    fbb_.AddElement<int32_t>(Response::VT_CODE, code, 0);
-  }
-  void add_result(::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> result) {
-    fbb_.AddOffset(Response::VT_RESULT, result);
-  }
-  explicit ResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  ::flatbuffers::Offset<Response> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = ::flatbuffers::Offset<Response>(end);
-    return o;
-  }
-};
-
-inline ::flatbuffers::Offset<Response> CreateResponse(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    uint64_t id = 0,
-    int32_t code = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> result = 0) {
-  ResponseBuilder builder_(_fbb);
-  builder_.add_id(id);
-  builder_.add_result(result);
-  builder_.add_code(code);
-  return builder_.Finish();
-}
-
-inline ::flatbuffers::Offset<Response> CreateResponseDirect(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    uint64_t id = 0,
-    int32_t code = 0,
-    const std::vector<uint8_t> *result = nullptr) {
-  auto result__ = result ? _fbb.CreateVector<uint8_t>(*result) : 0;
-  return rpc::CreateResponse(
-      _fbb,
-      id,
-      code,
-      result__);
-}
-
-inline const rpc::Request *GetRequest(const void *buf) {
-  return ::flatbuffers::GetRoot<rpc::Request>(buf);
-}
-
-inline const rpc::Request *GetSizePrefixedRequest(const void *buf) {
-  return ::flatbuffers::GetSizePrefixedRoot<rpc::Request>(buf);
-}
-
-inline bool VerifyRequestBuffer(
-    ::flatbuffers::Verifier &verifier) {
-  return verifier.VerifyBuffer<rpc::Request>(nullptr);
-}
-
-inline bool VerifySizePrefixedRequestBuffer(
-    ::flatbuffers::Verifier &verifier) {
-  return verifier.VerifySizePrefixedBuffer<rpc::Request>(nullptr);
-}
-
-inline void FinishRequestBuffer(
-    ::flatbuffers::FlatBufferBuilder &fbb,
-    ::flatbuffers::Offset<rpc::Request> root) {
-  fbb.Finish(root);
-}
-
-inline void FinishSizePrefixedRequestBuffer(
-    ::flatbuffers::FlatBufferBuilder &fbb,
-    ::flatbuffers::Offset<rpc::Request> root) {
-  fbb.FinishSizePrefixed(root);
 }
 
 }  // namespace rpc

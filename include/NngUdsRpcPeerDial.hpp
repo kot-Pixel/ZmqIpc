@@ -2,8 +2,11 @@
 #include <string.h>
 #include <vector>
 #include <string>
+#include <mutex>
+#include <future>
+#include <unordered_map>
 
-#include <nng/protocol/pipeline0/pull.h>
+#include <nng/protocol/pair0/pair.h>
 #include <android/log.h>
 
 #include "flatbuffers/verifier.h"
@@ -15,22 +18,22 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, PROJECT_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, PROJECT_TAG, __VA_ARGS__)
 
-struct AioWithContext
+struct NngPeerDialAioWithContext
 {
     nng_aio *aio = nullptr;
-    class NngUdsRpcServer *server = nullptr;
+    class NngUdsRpcPeerDial *server = nullptr;
 };
 
-class NngUdsRpcServer
+class NngUdsRpcPeerDial
 {
 public:
 
     using HandlerFunc = std::function<void(const void* req_buf, size_t len, std::string& response_out)>;
 
-    NngUdsRpcServer(const std::string &addr = "abstract://nng.rpc", int workers = 16)
+    NngUdsRpcPeerDial(const std::string &addr = "abstract://nng.rpc", int workers = 16)
         : address(addr), num_workers(workers), sock{} {}
 
-    ~NngUdsRpcServer()
+    ~NngUdsRpcPeerDial()
     {
         stop();
     }
@@ -65,10 +68,11 @@ public:
 
     void dispatch(const std::string& method_name, const void* req_buf, size_t len, std::string& resp_out);
 
+    bool call_remote(const std::string& method, const void* req_buf, size_t len, std::string& resp_out);
 private:
     static void recv_cb_static(void *arg)
     {
-        auto *ctx = static_cast<AioWithContext *>(arg);
+        auto *ctx = static_cast<NngPeerDialAioWithContext *>(arg);
         if (ctx && ctx->server)
         {
             ctx->server->recv_cb(ctx->aio);
@@ -76,12 +80,17 @@ private:
     }
 
     void recv_cb(nng_aio *aio);
+    uint32_t generate_request_id();
 
 private:
     std::string address;
     int num_workers;
     nng_socket sock;
-    std::vector<AioWithContext *> aio_list;
+    std::vector<NngPeerDialAioWithContext *> aio_list;
 
     std::unordered_map<std::string, HandlerFunc> method_map;
+
+    std::atomic<uint32_t> next_request_id{1};
+    std::mutex pending_mutex;
+    std::unordered_map<uint32_t, std::promise<std::string>> pending_requests;
 };
