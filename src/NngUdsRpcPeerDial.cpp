@@ -138,12 +138,13 @@ void NngUdsRpcPeerDial::recv_cb(nng_aio *aio)
         case rpc::RpcMessageType_RESPONSE:
         {
             uint32_t resp_id = rpc_msg->id();
-            std::string result;
+
+            std::shared_ptr<std::vector<uint8_t>> result;
 
             if (rpc_msg->payload())
             {
-                result.assign(reinterpret_cast<const char *>(rpc_msg->payload()->data()),
-                              rpc_msg->payload()->size());
+                auto payload = rpc_msg->payload();
+                result = std::make_shared<std::vector<uint8_t>>(payload->begin(), payload->end());
             }
 
             {
@@ -151,7 +152,7 @@ void NngUdsRpcPeerDial::recv_cb(nng_aio *aio)
                 auto it = pending_requests.find(resp_id);
                 if (it != pending_requests.end())
                 {
-                    it->second.set_value(std::move(result));
+                    it->second.set_value(result);
                     pending_requests.erase(it);
                 }
                 else
@@ -161,6 +162,7 @@ void NngUdsRpcPeerDial::recv_cb(nng_aio *aio)
             }
             break;
         }
+
         default:
             break;
         }
@@ -181,8 +183,8 @@ uint32_t NngUdsRpcPeerDial::generate_request_id()
 }
 
 bool NngUdsRpcPeerDial::call_remote(const std::string &method,
-                                  const void *req_buf, size_t len,
-                                  std::string &resp_out)
+                                    const void *req_buf, size_t len,
+                                    uint8_t* &resp_buf, size_t* resp_size)
 {
     uint32_t id = generate_request_id();
 
@@ -198,8 +200,9 @@ bool NngUdsRpcPeerDial::call_remote(const std::string &method,
 
     memcpy(nng_msg_body(msg), builder.GetBufferPointer(), builder.GetSize());
 
-    std::promise<std::string> prom;
-    std::future<std::string> fut = prom.get_future();
+    std::promise<std::shared_ptr<std::vector<uint8_t>>> prom;
+    std::future<std::shared_ptr<std::vector<uint8_t>>> fut = prom.get_future();
+
     {
         std::lock_guard<std::mutex> lock(pending_mutex);
         pending_requests[id] = std::move(prom);
@@ -219,6 +222,15 @@ bool NngUdsRpcPeerDial::call_remote(const std::string &method,
         return false;
     }
 
-    resp_out = fut.get();
+    auto data_ptr = fut.get(); // shared_ptr<vector<uint8_t>>
+
+    if (!data_ptr || data_ptr->empty())
+        return false;
+
+    resp_buf = new uint8_t[data_ptr->size()];
+    memcpy(resp_buf, data_ptr->data(), data_ptr->size());
+    if (resp_size)
+        *resp_size = data_ptr->size();
+
     return true;
 }

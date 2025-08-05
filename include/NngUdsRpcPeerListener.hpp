@@ -56,9 +56,6 @@ public:
                 return;
             }
 
-            LOGE("HandlerFunc flatbuffer verify success");
-            
-
             const RequestT* req_obj = flatbuffers::GetRoot<RequestT>(data);
             flatbuffers::FlatBufferBuilder fbb;
 
