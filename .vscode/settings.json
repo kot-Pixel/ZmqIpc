@@ -73,6 +73,7 @@
         "string.h": "c",
         "nuts.h": "c",
         "posix_impl.h": "c",
-        "stubs.h": "c"
+        "stubs.h": "c",
+        "future": "cpp"
     }
 }
