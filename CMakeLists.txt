@@ -27,10 +27,11 @@ target_include_directories(ZmqIpcServer PUBLIC
 
 target_link_libraries(ZmqIpcServer PRIVATE log)
 
-target_sources(ZmqIpcServer PUBLIC 
-    # src/ZUdsRpcServer.cpp
+target_sources(ZmqIpcServer PUBLIC
     src/NngUdsRpcPeerListener.cpp
     src/NngUdsRpcPeerDial.cpp
+    src/NngUdsRpcPushDial.cpp
+    src/NngUdsRpcPullListener.cpp
 )
 
 # target_link_libraries(ZmqIpcServer)
