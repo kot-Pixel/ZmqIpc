@@ -1,4 +1,5 @@
 #include "NngUdsRpcPeerDial.hpp"
+#include <nng/protocol/pair0/pair.h>
 
 bool NngUdsRpcPeerDial::start()
 {
@@ -6,13 +7,19 @@ bool NngUdsRpcPeerDial::start()
 
     if ((rv = nng_pair0_open(&sock)) != 0)
     {
-        LOGE("nng_pull_open: %s", nng_strerror(rv));
+        PEER_DIAL_LOGE("nng_pull_open: %s", nng_strerror(rv));
         return false;
     }
 
+    nng_socket_set_int(sock, NNG_OPT_RECONNMAXT, 500);
+    nng_socket_set_int(sock, NNG_OPT_RECONNMINT, 100);
+
+    nng_pipe_notify(sock, NNG_PIPE_EV_REM_POST, pipe_cb, this);
+    nng_pipe_notify(sock, NNG_PIPE_EV_ADD_POST, pipe_cb, this);
+
     if ((rv = nng_dial(sock, address.c_str(), nullptr, 0)) != 0)
     {
-        LOGE("nng_dial: %s", nng_strerror(rv));
+        PEER_DIAL_LOGE("nng_dial: %s", nng_strerror(rv));
         nng_close(sock);
         return false;
     }
@@ -25,31 +32,25 @@ bool NngUdsRpcPeerDial::start()
         rv = nng_aio_alloc(&ctx->aio, recv_cb_static, ctx);
         if (rv != 0)
         {
-            LOGE("nng_aio_alloc: %s", nng_strerror(rv));
+            PEER_DIAL_LOGE("nng_aio_alloc: %s", nng_strerror(rv));
             delete ctx;
-            return false;
+        } else {
+            aio_list.push_back(ctx);
+            nng_recv_aio(sock, ctx->aio);
         }
-
-        aio_list.push_back(ctx);
-        nng_recv_aio(sock, ctx->aio);
     }
 
-    LOGD("NNG dial to address at: %s", address.c_str());
+    PEER_DIAL_LOG_D("NNG dial to address at: %s", address.c_str());
+
+    dialRunning.store(true);
+
     return true;
-    return false;
-}
-
-void NngUdsRpcPeerDial::run_forever()
-{
-    while (true)
-    {
-        nng_msleep(1000);
-    }
 }
 
 void NngUdsRpcPeerDial::stop()
 {
-    for (auto *ctx : aio_list)
+
+    for (const auto *ctx : aio_list)
     {
         if (ctx && ctx->aio)
         {
@@ -60,59 +61,69 @@ void NngUdsRpcPeerDial::stop()
     }
     aio_list.clear();
     nng_close(sock);
-    LOGD("NNG RPC server stopped.");
+    method_map.clear();
+
+    if (isDebugMode)
+        PEER_DIAL_LOG_D("peer server stopped.");
+
+    dialRunning.store(false);
 }
 
 void NngUdsRpcPeerDial::dispatch(const std::string &method_name, const void *req_buf, size_t len, std::string &resp_out)
 {
-    auto it = method_map.find(method_name);
+    const auto it = method_map.find(method_name);
     if (it == method_map.end())
     {
-        LOGE("No such method registered: %s", method_name.c_str());
+        if (isDebugMode) {
+            PEER_DIAL_LOGE("No such method registered: %s", method_name.c_str());
+        }
         return;
     }
 
-    HandlerFunc &handler = it->second;
+    const HandlerFunc &handler = it->second;
     handler(req_buf, len, resp_out);
 }
 
 void NngUdsRpcPeerDial::recv_cb(nng_aio *aio)
 {
-    int rv = nng_aio_result(aio);
-    if (rv == 0)
+    if (int rv = nng_aio_result(aio); rv == 0)
     {
         nng_msg *msg = nng_aio_get_msg(aio);
         void *data = nng_msg_body(msg);
         size_t len = nng_msg_len(msg);
 
-        flatbuffers::Verifier verifier(reinterpret_cast<const uint8_t *>(data), len);
+        flatbuffers::Verifier verifier(static_cast<const uint8_t *>(data), len);
         if (!verifier.VerifyBuffer<rpc::RpcMessage>())
         {
-            LOGE("Failed to verify RpcMessage");
+            if (isDebugMode) {
+                PEER_DIAL_LOGE("Failed to verify RpcMessage");
+            }
             return;
         }
 
-        const rpc::RpcMessage *rpc_msg = flatbuffers::GetRoot<rpc::RpcMessage>(data);
+        const auto *rpc_msg = flatbuffers::GetRoot<rpc::RpcMessage>(data);
 
-        LOGD("Received RPC id=%llu, type=%d, method=%s, payload_size=%u",
-             static_cast<unsigned long long>(rpc_msg->id()),
-             static_cast<int>(rpc_msg->type()),
-             rpc_msg->method() ? rpc_msg->method()->c_str() : "null",
-             rpc_msg->payload() ? rpc_msg->payload()->size() : 0);
+        if (isDebugMode) {
+            PEER_DIAL_LOG_D("receive rpc method_id = %llu, type = %d, method_name = %s, payload_size=%u",
+                 static_cast<unsigned long long>(rpc_msg->id()),
+                 static_cast<int>(rpc_msg->type()),
+                 rpc_msg->method() ? rpc_msg->method()->c_str() : "null",
+                 rpc_msg->payload() ? rpc_msg->payload()->size() : 0);
+        }
 
         switch (rpc_msg->type())
         {
         case rpc::RpcMessageType_REQUEST:
         {
             const std::string method_name = rpc_msg->method()->str();
-            auto it = method_map.find(method_name);
-            if (it != method_map.end())
+            auto findResult = method_map.find(method_name);
+            if (findResult != method_map.end())
             {
                 const uint8_t *req_data = rpc_msg->payload()->data();
                 size_t req_len = rpc_msg->payload()->size();
 
                 std::string resp_bin;
-                it->second(req_data, req_len, resp_bin);
+                findResult->second(req_data, req_len, resp_bin);
 
                 flatbuffers::FlatBufferBuilder builder;
                 auto payload_offset = builder.CreateVector(
@@ -120,7 +131,7 @@ void NngUdsRpcPeerDial::recv_cb(nng_aio *aio)
 
                 auto method_offset = builder.CreateString(method_name);
 
-                auto resp_offset = rpc::CreateRpcMessage(
+                auto resp_offset = CreateRpcMessage(
                     builder,
                     rpc::RpcMessageType_RESPONSE,
                     rpc_msg->id(),
@@ -131,7 +142,15 @@ void NngUdsRpcPeerDial::recv_cb(nng_aio *aio)
                 nng_msg *nng_rsp_msg;
                 nng_msg_alloc(&nng_rsp_msg, builder.GetSize());
                 memcpy(nng_msg_body(nng_rsp_msg), builder.GetBufferPointer(), builder.GetSize());
-                nng_sendmsg(sock, nng_rsp_msg, 0);
+                auto result = nng_sendmsg(sock, nng_rsp_msg, 0);
+                if (isDebugMode) {
+                    PEER_DIAL_LOG_D("nng_sendmsg send msg result is : %d",result);
+                }
+            } else {
+                if (isDebugMode) {
+                    PEER_DIAL_LOGE("there is no reg method");
+                    dumpRegisteredMethods();
+                }
             }
             break;
         }
@@ -149,15 +168,19 @@ void NngUdsRpcPeerDial::recv_cb(nng_aio *aio)
 
             {
                 std::lock_guard<std::mutex> lock(pending_mutex);
-                auto it = pending_requests.find(resp_id);
-                if (it != pending_requests.end())
+                if (auto it = pending_requests.find(resp_id); it != pending_requests.end())
                 {
+                    if (isDebugMode) {
+                        PEER_DIAL_LOGE("receive rpc invoke resp_id is : %d", resp_id);
+                    }
                     it->second.set_value(result);
                     pending_requests.erase(it);
                 }
                 else
                 {
-                    LOGE("No pending request found for id=%u", resp_id);
+                    if (isDebugMode) {
+                        PEER_DIAL_LOGE("No pending request found for id=%u", resp_id);
+                    }
                 }
             }
             break;
@@ -171,7 +194,9 @@ void NngUdsRpcPeerDial::recv_cb(nng_aio *aio)
     }
     else
     {
-        LOGE("Error receiving message: %s", nng_strerror(rv));
+        if (isDebugMode) {
+            PEER_DIAL_LOGE("Error receiving message: %s", nng_strerror(rv));
+        }
     }
 
     nng_recv_aio(sock, aio);
@@ -182,21 +207,35 @@ uint32_t NngUdsRpcPeerDial::generate_request_id()
     return next_request_id.fetch_add(1, std::memory_order_relaxed);
 }
 
+void NngUdsRpcPeerDial::internalNngPipeEvent(nng_pipe p, nng_pipe_ev ev) {
+    uint32_t id = nng_pipe_id(p);
+    if (ev == NNG_PIPE_EV_REM_POST) {
+        if (isDebugMode)
+            PEER_DIAL_LOG_D("inner: Pipe REM_POST (ID=%u) - Lost connection", id);
+    } else if (ev == NNG_PIPE_EV_ADD_POST) {
+        if (isDebugMode)
+            PEER_DIAL_LOG_D("inner: Pipe ADD_POST (ID=%u) - Connected", id);
+    }
+}
+
 bool NngUdsRpcPeerDial::call_remote(const std::string &method,
-                                    const void *req_buf, size_t len,
-                                    uint8_t* &resp_buf, size_t* resp_size)
+                                    const void *req_buf, const size_t len,
+                                    std::unique_ptr<uint8_t[]>& resp_buf,
+                                    size_t& resp_size)
 {
-    uint32_t id = generate_request_id();
+    const uint32_t id = generate_request_id();
 
     flatbuffers::FlatBufferBuilder builder;
-    auto method_offset = builder.CreateString(method);
-    auto payload_offset = builder.CreateVector(reinterpret_cast<const uint8_t *>(req_buf), len);
-    auto rpc_offset = rpc::CreateRpcMessage(builder, rpc::RpcMessageType_REQUEST, id, method_offset, payload_offset);
+    const auto method_offset = builder.CreateString(method);
+    const auto payload_offset = builder.CreateVector(static_cast<const uint8_t *>(req_buf), len);
+    const auto rpc_offset = CreateRpcMessage(builder, rpc::RpcMessageType_REQUEST, id, method_offset, payload_offset);
     builder.Finish(rpc_offset);
 
     nng_msg *msg;
-    if (nng_msg_alloc(&msg, builder.GetSize()) != 0)
+
+    if (nng_msg_alloc(&msg, builder.GetSize()) != 0) {
         return false;
+    }
 
     memcpy(nng_msg_body(msg), builder.GetBufferPointer(), builder.GetSize());
 
@@ -222,15 +261,14 @@ bool NngUdsRpcPeerDial::call_remote(const std::string &method,
         return false;
     }
 
-    auto data_ptr = fut.get(); // shared_ptr<vector<uint8_t>>
+    const auto data_ptr = fut.get();
 
     if (!data_ptr || data_ptr->empty())
         return false;
 
-    resp_buf = new uint8_t[data_ptr->size()];
-    memcpy(resp_buf, data_ptr->data(), data_ptr->size());
-    if (resp_size)
-        *resp_size = data_ptr->size();
+    resp_buf = std::make_unique<uint8_t[]>(data_ptr->size());
+    memcpy(resp_buf.get(), data_ptr->data(), data_ptr->size());
+    resp_size = data_ptr->size();
 
     return true;
 }
